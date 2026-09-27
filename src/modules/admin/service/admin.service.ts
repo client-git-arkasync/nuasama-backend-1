@@ -257,6 +257,7 @@ export class AdminService {
       status: order.status,
       total_price: Number(order.total_price),
       payment_proof_url: order.payment_proof_url || '',
+      ravapayTransactionId: order.ravapay_transaction_id || '',
       created_at: order.created_at,
       items: order.order_items.map(oi => ({
         menu_item_id: oi.menu_item_id,
