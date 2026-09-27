@@ -174,8 +174,29 @@ export class OrderService {
   }
 
   async getOrderById(userId: string, orderId: string) {
-    const order = await prisma.orders.findFirst({ where: { id: orderId, user_id: userId } });
+    let order = await prisma.orders.findFirst({ where: { id: orderId, user_id: userId } });
     if (!order) throw new AppError('Pesanan tidak ditemukan', 404);
+
+    // Auto-sync with RavaPay for sandbox/local dev (since webhook might not reach localhost)
+    if (order.status === 'menunggu_pembayaran' && order.ravapay_transaction_id) {
+      try {
+        const statusData = await RavaPayClient.getTransactionStatus(order.ravapay_transaction_id);
+        if (statusData.status === 'success') {
+          order = await prisma.orders.update({
+            where: { id: order.id },
+            data: { status: 'diproses' },
+          });
+        } else if (statusData.status === 'expired' || statusData.status === 'cancel') {
+          order = await prisma.orders.update({
+            where: { id: order.id },
+            data: { status: 'ditolak' },
+          });
+        }
+      } catch (err: any) {
+        console.error('[Sync] RavaPay sync failed:', err.message);
+      }
+    }
+
     return this.buildOrderResponse(order.id);
   }
 
