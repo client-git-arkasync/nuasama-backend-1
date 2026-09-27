@@ -20,7 +20,7 @@ const envSchema = z.object({
   // JWT
   JWT_PRIVATE_KEY: z.string().min(1, 'JWT_PRIVATE_KEY is required'),
   JWT_PUBLIC_KEY: z.string().min(1, 'JWT_PUBLIC_KEY is required'),
-  JWT_EXPIRES_IN: z.string().default('2160h'),
+  JWT_EXPIRES_IN: z.string().default('90d'),
 
   // GOOGLE OAUTH
   GOOGLE_CLIENT_ID: z.string().optional(),

@@ -1,7 +1,7 @@
 import { Router } from 'express';
+import { menuController } from '../controller/menu.controller';
 
 export const menuRouter = Router();
 
-menuRouter.get('/', (req, res) => {
-  res.json({ message: 'Menu route' });
-});
+menuRouter.get('/', menuController.getAll.bind(menuController));
+menuRouter.get('/:id', menuController.getById.bind(menuController));

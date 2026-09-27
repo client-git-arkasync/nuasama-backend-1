@@ -9,10 +9,9 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
     });
   }
 
-  console.error('Unexpected error:', err);
-  
+  console.error('[Error]', err);
   return res.status(500).json({
     status: 'error',
-    message: 'Internal server error',
+    message: err?.message || 'Internal server error',
   });
 };
