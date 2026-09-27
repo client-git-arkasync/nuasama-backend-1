@@ -89,6 +89,7 @@ model order_items {
 
 model orders {
   id                     String                  @id @default(dbgenerated("(uuid())")) @db.Char(36)
+  display_id             String?                 @db.VarChar(50)
   user_id                String                  @db.Char(36)
   order_type             String                  @db.VarChar(20)
   dine_in_date           DateTime?               @db.Date
@@ -105,6 +106,7 @@ model orders {
   payment_verifications  payment_verifications[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
+  @@index([display_id], map: "idx_orders_display_id")
   @@index([order_type], map: "idx_orders_order_type")
   @@index([ravapay_transaction_id], map: "idx_orders_ravapay_tx")
   @@index([status], map: "idx_orders_status")

@@ -41,8 +41,11 @@ export class DapurController {
 
   async uploadLogo(req: Request, res: Response, next: NextFunction) {
     try {
-      const { logo_url } = req.body;
-      if (!logo_url) throw new AppError('URL logo wajib diisi', 400);
+      if (!req.file) throw new AppError('File logo wajib diunggah', 400);
+      
+      const { uploadBufferToCloudinary } = await import('../../../lib/cloudinary');
+      const logo_url = await uploadBufferToCloudinary(req.file.buffer, 'nuasama/dapur-logos');
+      
       const data = await dapurService.uploadLogo(req.params.id, logo_url);
       res.status(200).json({ status: 'success', data });
     } catch (err) { next(err); }

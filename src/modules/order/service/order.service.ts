@@ -17,6 +17,31 @@ export const uploadProofSchema = z.object({});
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 
+/** Generate display ID: #username + order-count-today + ddmmyy
+ *  Example: deco1270926 (for user 'Deco Prasetya', 1st order, 27 Sep 2026)
+ */
+async function generateDisplayId(userId: string): Promise<string> {
+  const user = await prisma.users.findUnique({ where: { id: userId }, select: { name: true } });
+  const namePart = (user?.name || 'u')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 8);
+
+  const now = new Date();
+  // Count orders this user has placed today
+  const startOfDay = new Date(now); startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59, 999);
+  const countToday = await prisma.orders.count({
+    where: { user_id: userId, created_at: { gte: startOfDay, lte: endOfDay } },
+  });
+
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yy = String(now.getFullYear()).slice(-2);
+
+  return `${namePart}${countToday + 1}${dd}${mm}${yy}`;
+}
+
 export class OrderService {
   private static STATIC_QRIS_URL = process.env.STATIC_QRIS_URL || '';
 
@@ -73,10 +98,12 @@ export class OrderService {
     const total = cartItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
 
     // Transaction: create order + order_items + clear cart
+    const displayId = await generateDisplayId(userId);
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.orders.create({
         data: {
           user_id: userId,
+          display_id: displayId,
           order_type: params.order_type,
           dine_in_date: params.dine_in_date ? new Date(params.dine_in_date) : null,
           dine_in_time: params.dine_in_time || null,
@@ -190,6 +217,7 @@ export class OrderService {
 
     return {
       id: order.id,
+      display_id: order.display_id || order.id.slice(0, 8).toUpperCase(),
       order_type: order.order_type,
       status: order.status,
       total_price: Number(order.total_price),

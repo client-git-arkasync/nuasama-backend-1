@@ -124,10 +124,21 @@ export class AdminController {
 
   async uploadMenuPhoto(req: Request, res: Response, next: NextFunction) {
     try {
-      const { photo_url } = req.body;
-      if (!photo_url) throw new AppError('File foto wajib diunggah (kirim photo_url dari Cloudinary)', 400);
+      if (!req.file) throw new AppError('File foto wajib diunggah', 400);
+      
+      const { uploadBufferToCloudinary } = await import('../../../lib/cloudinary');
+      const photo_url = await uploadBufferToCloudinary(req.file.buffer, 'nuasama/menu-photos');
+      
       await adminService.uploadMenuPhoto(req.params.id, photo_url);
       res.status(200).json({ status: 'success', message: 'Foto menu berhasil diunggah' });
+    } catch (err) { next(err); }
+  }
+
+  async scanAndComplete(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { displayId } = req.params;
+      const data = await adminService.scanAndComplete(displayId);
+      res.status(200).json({ status: 'success', message: 'Pesanan berhasil diselesaikan via scan', data });
     } catch (err) { next(err); }
   }
 

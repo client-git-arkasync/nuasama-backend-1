@@ -62,8 +62,8 @@ export class AdminService {
   async verifyPayment(adminId: string, orderId: string, params: { action: string; rejection_reason: string }) {
     const order = await prisma.orders.findUnique({ where: { id: orderId } });
     if (!order) throw new AppError('Pesanan tidak ditemukan', 404);
-    if (order.status !== 'menunggu_verifikasi') {
-      throw new AppError('Pesanan ini tidak dalam status menunggu verifikasi', 400);
+    if (order.status !== 'menunggu_verifikasi' && order.status !== 'menunggu_pembayaran') {
+      throw new AppError('Pesanan ini tidak dalam status menunggu pembayaran/verifikasi', 400);
     }
 
     const isRejected = params.action === 'ditolak' || params.action === 'reject';
@@ -88,6 +88,7 @@ export class AdminService {
     if (!order) throw new AppError('Pesanan tidak ditemukan', 404);
 
     const validTransitions: Record<string, string[]> = {
+      menunggu_verifikasi: ['diproses'],
       diproses: ['siap'],
       siap: ['selesai'],
     };
@@ -96,7 +97,35 @@ export class AdminService {
       throw new AppError(`Perubahan status dari '${order.status}' ke '${newStatus}' tidak diizinkan`, 400);
     }
 
-    await prisma.orders.update({ where: { id: orderId }, data: { status: newStatus } });
+    // Selalu update updated_at agar waktu selesai tercatat dengan benar
+    await prisma.orders.update({
+      where: { id: orderId },
+      data: {
+        status: newStatus,
+        updated_at: new Date(),
+      },
+    });
+  }
+
+  /** Scan barcode (display_id) dan langsung selesaikan pesanan */
+  async scanAndComplete(displayId: string) {
+    const cleanId = displayId.replace(/^#/, '').trim().toLowerCase();
+    const order = await prisma.orders.findFirst({
+      where: { display_id: cleanId },
+    });
+    if (!order) throw new AppError(`Pesanan dengan ID "${cleanId}" tidak ditemukan`, 404);
+
+    const completableStatuses = ['diproses', 'siap', 'menunggu_verifikasi', 'menunggu_pembayaran'];
+    if (!completableStatuses.includes(order.status)) {
+      throw new AppError(`Pesanan sudah ${order.status}`, 400);
+    }
+
+    await prisma.orders.update({
+      where: { id: order.id },
+      data: { status: 'selesai', updated_at: new Date() },
+    });
+
+    return this.buildAdminOrderResponse(order.id);
   }
 
   async getDineInBookings() {
@@ -226,7 +255,7 @@ export class AdminService {
 
     const [total, orders] = await Promise.all([
       prisma.orders.count({ where }),
-      prisma.orders.findMany({ where, orderBy: { created_at: 'desc' }, skip, take: query.limit }),
+      prisma.orders.findMany({ where, orderBy: { updated_at: 'desc' }, skip, take: query.limit }),
     ]);
 
     const result = await Promise.all(orders.map(o => this.buildAdminOrderResponse(o.id)));
@@ -248,6 +277,7 @@ export class AdminService {
 
     return {
       id: order.id,
+      display_id: order.display_id || order.id.slice(0, 8).toUpperCase(),
       customer_name: order.users.name,
       customer_email: order.users.email,
       customer_phone: order.users.phone_number || '',
@@ -259,6 +289,7 @@ export class AdminService {
       payment_proof_url: order.payment_proof_url || '',
       ravapayTransactionId: order.ravapay_transaction_id || '',
       created_at: order.created_at,
+      updated_at: order.updated_at,
       items: order.order_items.map(oi => ({
         menu_item_id: oi.menu_item_id,
         menu_name: oi.menu_items.name,
