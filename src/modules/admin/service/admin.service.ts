@@ -111,7 +111,12 @@ export class AdminService {
   async scanAndComplete(displayId: string) {
     const cleanId = displayId.replace(/^#/, '').trim().toLowerCase();
     const order = await prisma.orders.findFirst({
-      where: { display_id: cleanId },
+      where: {
+        OR: [
+          { display_id: cleanId },
+          { display_id: cleanId.toUpperCase() },
+        ]
+      },
     });
     if (!order) throw new AppError(`Pesanan dengan ID "${cleanId}" tidak ditemukan`, 404);
 
