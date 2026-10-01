@@ -42,6 +42,14 @@ app.use('/api/menu', menuRouter);
 app.use('/api/orders', orderRouter);
 app.use('/api/webhooks', webhookRouter);
 
+app.get('/api/settings', async (req: Request, res: Response, next: import('express').NextFunction) => {
+  try {
+    const { adminService } = await import('./modules/admin/service/admin.service');
+    const settings = await adminService.getSettings();
+    res.status(200).json({ status: 'success', data: settings });
+  } catch (err) { next(err); }
+});
+
 // Error Handling (must be the last middleware)
 app.use(errorHandler);
 

@@ -62,14 +62,25 @@ export class OrderService {
     }
 
     // Get cart items or payload items
-    let cartItems: Array<{ menu_item_id: string; qty: number; price: number; name: string }> = [];
+    let cartItems: Array<{ menu_item_id: string; qty: number; price: number; name: string; use_stock?: boolean }> = [];
 
     if (params.items && params.items.length > 0) {
       for (const reqItem of params.items) {
         const mi = await prisma.menuItem.findFirst({
-          where: { id: reqItem.menu_item_id, stock_status: 'aktif' },
+          where: { id: reqItem.menu_item_id },
         });
-        if (mi) cartItems.push({ menu_item_id: mi.id, qty: reqItem.qty, price: Number(mi.price), name: mi.name });
+        if (mi) {
+          const isOutOfStock = mi.stock_status === 'nonaktif' || (mi.use_stock && (mi.stock_quantity ?? 0) < reqItem.qty);
+          if (isOutOfStock) throw new AppError(`Menu ${mi.name} stok tidak mencukupi atau sedang habis`, 400);
+
+          cartItems.push({ 
+            menu_item_id: mi.id, 
+            qty: reqItem.qty, 
+            price: mi.discount_price ? Number(mi.discount_price) : Number(mi.price), 
+            name: mi.name,
+            use_stock: mi.use_stock
+          });
+        }
       }
     } else {
       const dbCart = await prisma.cart_items.findMany({
@@ -77,25 +88,36 @@ export class OrderService {
       });
       const menuIds = dbCart.map(ci => ci.menu_item_id);
       const activeMenus = await prisma.menuItem.findMany({
-        where: { id: { in: menuIds }, stock_status: 'aktif' },
+        where: { id: { in: menuIds } },
       });
       const activeMenuMap = new Map(activeMenus.map(m => [m.id, m]));
-      cartItems = dbCart
-        .filter(ci => activeMenuMap.has(ci.menu_item_id))
-        .map(ci => {
-          const mi = activeMenuMap.get(ci.menu_item_id)!;
-          return {
+      for (const ci of dbCart) {
+        const mi = activeMenuMap.get(ci.menu_item_id);
+        if (mi) {
+          const isOutOfStock = mi.stock_status === 'nonaktif' || (mi.use_stock && (mi.stock_quantity ?? 0) < ci.qty);
+          if (isOutOfStock) throw new AppError(`Menu ${mi.name} stok tidak mencukupi atau sedang habis`, 400);
+
+          cartItems.push({
             menu_item_id: ci.menu_item_id,
             qty: ci.qty,
-            price: Number(mi.price),
+            price: mi.discount_price ? Number(mi.discount_price) : Number(mi.price),
             name: mi.name,
-          };
-        });
+            use_stock: mi.use_stock
+          });
+        }
+      }
     }
 
     if (cartItems.length === 0) throw new AppError('Keranjang belanja kosong', 400);
 
-    const total = cartItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
+    const subtotal = cartItems.reduce((sum, ci) => sum + ci.price * ci.qty, 0);
+
+    const ppnSetting = await prisma.app_settings.findUnique({ where: { key: 'ppn' } });
+    const usePpnSetting = await prisma.app_settings.findUnique({ where: { key: 'use_ppn' } });
+    const usePpn = usePpnSetting?.value === 'true';
+    const ppnRate = usePpn && ppnSetting ? Number(ppnSetting.value) / 100 : 0;
+    const tax = Math.round(subtotal * ppnRate);
+    const total = subtotal + tax;
 
     // Transaction: create order + order_items + clear cart
     const displayId = await generateDisplayId(userId);
@@ -124,41 +146,69 @@ export class OrderService {
       // Clear cart
       await tx.cart_items.deleteMany({ where: { user_id: userId } });
 
+      // Deduct stock for items that use stock
+      for (const ci of cartItems) {
+        if ((ci as any).use_stock) {
+          await tx.menuItem.update({
+            where: { id: ci.menu_item_id },
+            data: { stock_quantity: { decrement: ci.qty } }
+          });
+        }
+      }
+
       return newOrder;
     });
 
-    // Async: generate QRIS via RavaPay and save transaction ID
+    // Sync: generate QRIS via RavaPay and save transaction ID
     if (process.env.RAVAPAY_API_KEY) {
-      // fire and forget (don't await)
-      RavaPayClient.createQRIS(total, `Order #${order.id.slice(0, 8)}`)
-        .then(async (qris) => {
-          await prisma.orders.update({
-            where: { id: order.id },
-            data: {
-              ravapay_transaction_id: qris.transaction_id,
-              ravapay_qr_url: qris.qr_url,
-            },
-          });
-          console.log(`[RavaPay] QRIS dibuat untuk order ${order.id}: ${qris.transaction_id}`);
-        })
-        .catch(err => {
-          console.error(`[RavaPay] Gagal membuat QRIS untuk order ${order.id}:`, err.message);
+      try {
+        const qris = await RavaPayClient.createQRIS(total, `Order #${order.id.slice(0, 8)}`);
+        await prisma.orders.update({
+          where: { id: order.id },
+          data: {
+            ravapay_transaction_id: qris.transaction_id,
+            ravapay_qr_url: qris.qr_url,
+          },
         });
+        console.log(`[RavaPay] QRIS dibuat untuk order ${order.id}: ${qris.transaction_id}`);
+      } catch (err: any) {
+        console.error(`[RavaPay] Gagal membuat QRIS untuk order ${order.id}:`, err.message);
+      }
     }
 
     return this.buildOrderResponse(order.id);
   }
 
   async getPaymentInfo(userId: string, orderId: string) {
-    const order = await prisma.orders.findFirst({
+    let order = await prisma.orders.findFirst({
       where: { id: orderId, user_id: userId },
     });
     if (!order) throw new AppError('Pesanan tidak ditemukan', 404);
 
+    // If qris_url is empty (old order or failed generation), try to generate now
+    if (!order.ravapay_qr_url && process.env.RAVAPAY_API_KEY) {
+      try {
+        const qris = await RavaPayClient.createQRIS(
+          Number(order.total_price),
+          `Order #${order.id.slice(0, 8)}`
+        );
+        order = await prisma.orders.update({
+          where: { id: order.id },
+          data: {
+            ravapay_transaction_id: qris.transaction_id,
+            ravapay_qr_url: qris.qr_url,
+          },
+        });
+        console.log(`[RavaPay] QRIS di-generate ulang untuk order ${order.id}: ${qris.transaction_id}`);
+      } catch (err: any) {
+        console.error(`[RavaPay] Gagal generate ulang QRIS untuk order ${order.id}:`, err.message);
+      }
+    }
+
     return {
       order_id: order.id,
       total_price: Number(order.total_price),
-      qris_url: order.ravapay_qr_url || OrderService.STATIC_QRIS_URL,
+      qris_url: order.ravapay_qr_url || '',
       transaction_id: order.ravapay_transaction_id || '',
       status: order.status,
     };

@@ -3,7 +3,7 @@ import { AppError } from '../utils/AppError';
 
 const RAVA_PAY_BASE_URL = 'https://api.ravapay.site';
 const API_KEY = process.env.RAVAPAY_API_KEY || '';
-const PROVIDER = process.env.RAVAPAY_PROVIDER || 'sandbox';
+const PROVIDER = process.env.RAVAPAY_PROVIDER || 'shopee';
 
 export interface RavaPayQRISResponse {
   provider: string;

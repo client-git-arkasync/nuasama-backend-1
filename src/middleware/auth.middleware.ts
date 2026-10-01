@@ -11,14 +11,18 @@ declare global {
 }
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  // Support token via Authorization header OR ?token= query param (needed for <img src> browser requests)
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const queryToken = req.query.token as string | undefined;
+
+  const raw = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : queryToken;
+
+  if (!raw) {
     return next(new AppError('Token tidak ditemukan, silakan login', 401));
   }
 
-  const token = authHeader.substring(7);
   try {
-    const payload = verifyToken(token);
+    const payload = verifyToken(raw);
     req.user = payload;
     next();
   } catch {

@@ -9,6 +9,9 @@ export const createMenuItemSchema = z.object({
   category: z.string().min(1),
   dapur_id: z.string().uuid(),
   photo_url: z.string().url().optional(),
+  use_stock: z.boolean().optional().default(false),
+  stock_quantity: z.number().optional().default(0),
+  discount_price: z.number().optional().nullable(),
 });
 
 export const updateMenuItemSchema = z.object({
@@ -18,6 +21,10 @@ export const updateMenuItemSchema = z.object({
   category: z.string().min(1).optional(),
   dapur_id: z.string().uuid().optional(),
   photo_url: z.string().url().optional(),
+  use_stock: z.boolean().optional(),
+  stock_quantity: z.number().optional(),
+  discount_price: z.number().optional().nullable(),
+  stock_status: z.string().optional(),
 });
 
 export const verifyPaymentSchema = z.object({
@@ -35,6 +42,11 @@ export const historyQuerySchema = z.object({
   order_type: z.string().optional(),
   page: z.string().optional().default('1').transform(Number),
   limit: z.string().optional().default('20').transform(Number),
+});
+
+export const updateSettingsSchema = z.object({
+  ppn: z.number().min(0).max(100),
+  use_ppn: z.boolean(),
 });
 
 export class AdminService {
@@ -184,6 +196,9 @@ export class AdminService {
         dapur_id: params.dapur_id,
         photo_url: params.photo_url || null,
         stock_status: 'aktif',
+        use_stock: params.use_stock,
+        stock_quantity: params.stock_quantity,
+        discount_price: params.discount_price || null,
       },
       include: { dapur: { select: { name: true, logo_url: true } } },
     });
@@ -197,7 +212,11 @@ export class AdminService {
     if (params.price) updates.price = params.price;
     if (params.category) updates.category = params.category;
     if (params.dapur_id) updates.dapur_id = params.dapur_id;
-    if (params.photo_url) updates.photo_url = params.photo_url;
+    if (params.photo_url !== undefined) updates.photo_url = params.photo_url;
+    if (params.use_stock !== undefined) updates.use_stock = params.use_stock;
+    if (params.stock_quantity !== undefined) updates.stock_quantity = params.stock_quantity;
+    if (params.discount_price !== undefined) updates.discount_price = params.discount_price;
+    if (params.stock_status !== undefined) updates.stock_status = params.stock_status;
 
     if (Object.keys(updates).length === 0) throw new AppError('Tidak ada data yang diubah', 400);
 
@@ -267,6 +286,30 @@ export class AdminService {
     return { orders: result, total };
   }
 
+  // ---- Settings ----
+  async getSettings() {
+    const ppnSetting = await prisma.app_settings.findUnique({ where: { key: 'ppn' } });
+    const usePpnSetting = await prisma.app_settings.findUnique({ where: { key: 'use_ppn' } });
+    return {
+      ppn: ppnSetting ? Number(ppnSetting.value) : 0,
+      use_ppn: usePpnSetting ? usePpnSetting.value === 'true' : false,
+    };
+  }
+
+  async updateSettings(ppn: number, use_ppn: boolean) {
+    await prisma.app_settings.upsert({
+      where: { key: 'ppn' },
+      update: { value: ppn.toString() },
+      create: { key: 'ppn', value: ppn.toString() },
+    });
+    await prisma.app_settings.upsert({
+      where: { key: 'use_ppn' },
+      update: { value: use_ppn.toString() },
+      create: { key: 'use_ppn', value: use_ppn.toString() },
+    });
+    return { ppn, use_ppn };
+  }
+
   // ---- Helpers ----
   private async buildAdminOrderResponse(orderId: string) {
     const order = await prisma.orders.findUnique({
@@ -315,6 +358,9 @@ export class AdminService {
       photo_url: item.photo_url || '',
       category: item.category,
       stock_status: item.stock_status,
+      use_stock: item.use_stock,
+      stock_quantity: item.stock_quantity,
+      discount_price: item.discount_price ? Number(item.discount_price) : null,
       dapur_id: item.dapur_id,
       dapur_name: item.dapur?.name || '',
       dapur_logo_url: item.dapur?.logo_url || '',

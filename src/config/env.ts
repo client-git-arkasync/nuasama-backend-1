@@ -49,7 +49,7 @@ const envSchema = z.object({
 
   // RAVAPAY
   RAVAPAY_API_KEY: z.string().optional(),
-  RAVAPAY_PROVIDER: z.string().default('sandbox'),
+  RAVAPAY_PROVIDER: z.string().default('shopee'),
   RAVAPAY_WEBHOOK_SECRET: z.string().optional(),
 });
 

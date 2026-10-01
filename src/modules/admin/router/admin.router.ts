@@ -34,3 +34,8 @@ adminRouter.patch('/menu/:id', ...guard, adminController.updateMenuItem.bind(adm
 adminRouter.delete('/menu/:id', ...guard, adminController.deleteMenuItem.bind(adminController));
 adminRouter.patch('/menu/:id/toggle-status', ...guard, adminController.toggleMenuStatus.bind(adminController)); // path sama dengan Go
 adminRouter.post('/menu/:id/photo', ...guard, upload.single('photo'), adminController.uploadMenuPhoto.bind(adminController)); 
+
+// Settings
+adminRouter.get('/settings', ...guard, adminController.getSettings.bind(adminController));
+adminRouter.post('/settings', ...guard, adminController.updateSettings.bind(adminController));
+

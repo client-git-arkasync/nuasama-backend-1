@@ -6,6 +6,7 @@ import {
   createMenuItemSchema,
   updateMenuItemSchema,
   historyQuerySchema,
+  updateSettingsSchema,
 } from '../service/admin.service';
 import { AppError } from '../../../utils/AppError';
 import { z } from 'zod';
@@ -150,6 +151,24 @@ export class AdminController {
       if (!result.success) throw new AppError('Query tidak valid', 400);
       const { customer_name, date, order_type, page, limit } = result.data;
       const data = await adminService.getOrderHistory({ customer_name, date, order_type, page, limit });
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  // ---- Settings ----
+
+  async getSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await adminService.getSettings();
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async updateSettings(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = updateSettingsSchema.safeParse(req.body);
+      if (!result.success) throw new AppError('Data tidak valid: ' + result.error.errors[0].message, 400);
+      const data = await adminService.updateSettings(result.data.ppn, result.data.use_ppn);
       res.status(200).json({ status: 'success', data });
     } catch (err) { next(err); }
   }
