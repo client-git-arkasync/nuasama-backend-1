@@ -5,14 +5,43 @@ import crypto from 'crypto';
 export class WebhookController {
   async handleRavaPay(req: Request, res: Response, next: NextFunction) {
     try {
-      // Dalam implementasi nyata, sangat disarankan untuk memverifikasi signature webhook
-      // const signature = req.headers['x-callback-token'];
+      // Verifikasi HMAC-SHA256 signature jika WEBHOOK_SECRET dikonfigurasi
+      const webhookSecret = process.env.RAVAPAY_WEBHOOK_SECRET;
+      if (webhookSecret) {
+        const signature = req.headers['x-ravapay-signature'] as string;
+        if (signature) {
+          const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+          const expected = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(rawBody)
+            .digest('hex');
+          const sigBuf = Buffer.from(signature, 'hex');
+          const expBuf = Buffer.from(expected, 'hex');
+          if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+            console.warn('[Webhook] Invalid signature — request rejected');
+            res.status(401).json({ error: 'Invalid signature' });
+            return;
+          }
+        }
+      }
 
-      console.log('[Webhook] Received RavaPay webhook:', req.body);
-      const { transaction_id, status } = req.body;
+      console.log('[Webhook] Received RavaPay webhook:', JSON.stringify(req.body));
 
-      if (!transaction_id || !status) {
-        res.status(400).json({ error: 'Invalid payload' });
+      // RavaPay payload format: { event: "payment.success", data: { transaction_id, status, ... } }
+      // Also supports flat format as fallback: { transaction_id, status }
+      let transaction_id: string;
+      let eventStatus: string;
+
+      if (req.body.event && req.body.data) {
+        transaction_id = req.body.data.transaction_id;
+        eventStatus = req.body.data.status || req.body.event;
+      } else {
+        transaction_id = req.body.transaction_id;
+        eventStatus = req.body.status;
+      }
+
+      if (!transaction_id) {
+        res.status(400).json({ error: 'Missing transaction_id in payload' });
         return;
       }
 
@@ -23,23 +52,30 @@ export class WebhookController {
 
       if (!order) {
         console.warn(`[Webhook] Order with transaction_id ${transaction_id} not found.`);
-        res.status(404).json({ error: 'Order not found' });
+        // Return 200 agar RavaPay tidak retry terus
+        res.status(200).json({ message: 'Order not found, ignored' });
         return;
       }
 
-      // Update status pesanan
-      if (status === 'success' || status === 'paid') {
+      // Tentukan status berdasarkan event/status
+      const isSuccess = eventStatus === 'success' || eventStatus === 'paid' || req.body.event === 'payment.success';
+      const isFailed = ['expired', 'failed', 'cancel'].includes(eventStatus)
+        || req.body.event === 'payment.expired' || req.body.event === 'payment.cancel';
+
+      if (isSuccess) {
         await prisma.orders.update({
           where: { id: order.id },
           data: { status: 'diproses' },
         });
-        console.log(`[Webhook] Order ${order.id} marked as diproses`);
-      } else if (status === 'expired' || status === 'failed' || status === 'cancel') {
+        console.log(`[Webhook] ✅ Order ${order.id} marked as diproses (payment success)`);
+      } else if (isFailed) {
         await prisma.orders.update({
           where: { id: order.id },
           data: { status: 'ditolak' },
         });
-        console.log(`[Webhook] Order ${order.id} marked as ditolak`);
+        console.log(`[Webhook] ❌ Order ${order.id} marked as ditolak (${eventStatus})`);
+      } else {
+        console.log(`[Webhook] ℹ️ Unhandled event/status: ${req.body.event} / ${eventStatus}`);
       }
 
       res.status(200).json({ message: 'Webhook processed successfully' });
