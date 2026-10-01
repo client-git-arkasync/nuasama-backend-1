@@ -20,7 +20,11 @@ app.use(cors({
   origin: process.env.CORS_ALLOWED_ORIGINS,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req: any, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req: Request, res: Response) => {
