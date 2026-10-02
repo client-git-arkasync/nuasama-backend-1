@@ -232,8 +232,18 @@ export class AdminService {
   }
 
   async deleteMenuItem(menuItemId: string) {
-    const existing = await prisma.menuItem.findUnique({ where: { id: menuItemId } });
+    const existing = await prisma.menuItem.findUnique({ 
+      where: { id: menuItemId },
+      include: { order_items: { take: 1 } }
+    });
+    
     if (!existing) throw new AppError('Menu tidak ditemukan', 404);
+    
+    // Jangan izinkan hapus jika menu sudah pernah dipesan (untuk menjaga riwayat pesanan)
+    if (existing.order_items && existing.order_items.length > 0) {
+      throw new AppError('Menu tidak dapat dihapus karena sudah ada di riwayat pesanan. Silakan ubah status menu menjadi Nonaktif.', 400);
+    }
+    
     await prisma.menuItem.delete({ where: { id: menuItemId } });
   }
 
