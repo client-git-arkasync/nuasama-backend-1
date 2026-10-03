@@ -168,7 +168,7 @@ export class AdminController {
     try {
       const result = updateSettingsSchema.safeParse(req.body);
       if (!result.success) throw new AppError('Data tidak valid: ' + result.error.errors[0].message, 400);
-      const data = await adminService.updateSettings(result.data.ppn, result.data.use_ppn);
+      const data = await adminService.updateSettings(result.data.ppn, result.data.use_ppn, result.data.app_name);
       res.status(200).json({ status: 'success', data });
     } catch (err) { next(err); }
   }

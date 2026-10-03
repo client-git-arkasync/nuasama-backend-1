@@ -47,6 +47,7 @@ export const historyQuerySchema = z.object({
 export const updateSettingsSchema = z.object({
   ppn: z.number().min(0).max(100),
   use_ppn: z.boolean(),
+  app_name: z.string().optional(),
 });
 
 export class AdminService {
@@ -300,13 +301,15 @@ export class AdminService {
   async getSettings() {
     const ppnSetting = await prisma.app_settings.findUnique({ where: { key: 'ppn' } });
     const usePpnSetting = await prisma.app_settings.findUnique({ where: { key: 'use_ppn' } });
+    const appNameSetting = await prisma.app_settings.findUnique({ where: { key: 'app_name' } });
     return {
       ppn: ppnSetting ? Number(ppnSetting.value) : 0,
       use_ppn: usePpnSetting ? usePpnSetting.value === 'true' : false,
+      app_name: appNameSetting ? appNameSetting.value : 'Nuasama',
     };
   }
 
-  async updateSettings(ppn: number, use_ppn: boolean) {
+  async updateSettings(ppn: number, use_ppn: boolean, app_name?: string) {
     await prisma.app_settings.upsert({
       where: { key: 'ppn' },
       update: { value: ppn.toString() },
@@ -317,7 +320,14 @@ export class AdminService {
       update: { value: use_ppn.toString() },
       create: { key: 'use_ppn', value: use_ppn.toString() },
     });
-    return { ppn, use_ppn };
+    if (app_name !== undefined) {
+      await prisma.app_settings.upsert({
+        where: { key: 'app_name' },
+        update: { value: app_name },
+        create: { key: 'app_name', value: app_name },
+      });
+    }
+    return { ppn, use_ppn, app_name };
   }
 
   // ---- Helpers ----
