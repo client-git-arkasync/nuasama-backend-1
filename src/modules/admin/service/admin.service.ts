@@ -7,6 +7,7 @@ export const createMenuItemSchema = z.object({
   description: z.string().optional().default(''),
   price: z.number().positive(),
   category: z.string().min(1),
+  product_type: z.enum(['fnb', 'aksesori']).default('fnb'),
   dapur_id: z.string().uuid(),
   photo_url: z.string().url().optional(),
   use_stock: z.boolean().optional().default(false),
@@ -19,6 +20,7 @@ export const updateMenuItemSchema = z.object({
   description: z.string().optional(),
   price: z.number().positive().optional(),
   category: z.string().min(1).optional(),
+  product_type: z.enum(['fnb', 'aksesori']).optional(),
   dapur_id: z.string().uuid().optional(),
   photo_url: z.string().url().optional(),
   use_stock: z.boolean().optional(),
@@ -170,6 +172,7 @@ export class AdminService {
     if (query.category) where.category = query.category;
     if (query.dapur_id) where.dapur_id = query.dapur_id;
     if (query.stock_status) where.stock_status = query.stock_status;
+    if ((query as any).product_type) where.product_type = (query as any).product_type;
     if (query.search) where.name = { contains: query.search };
 
     const [total, items] = await Promise.all([
@@ -193,6 +196,7 @@ export class AdminService {
         description: params.description || '',
         price: params.price,
         category: params.category,
+        product_type: params.product_type || 'fnb',
         dapur_id: params.dapur_id,
         photo_url: params.photo_url || null,
         stock_status: 'aktif',
@@ -211,6 +215,7 @@ export class AdminService {
     if (params.description !== undefined) updates.description = params.description;
     if (params.price) updates.price = params.price;
     if (params.category) updates.category = params.category;
+    if (params.product_type) updates.product_type = params.product_type;
     if (params.dapur_id) updates.dapur_id = params.dapur_id;
     if (params.photo_url !== undefined) updates.photo_url = params.photo_url;
     if (params.use_stock !== undefined) updates.use_stock = params.use_stock;
@@ -367,6 +372,7 @@ export class AdminService {
       price: Number(item.price),
       photo_url: item.photo_url || '',
       category: item.category,
+      product_type: item.product_type || 'fnb',
       stock_status: item.stock_status,
       use_stock: item.use_stock,
       stock_quantity: item.stock_quantity,

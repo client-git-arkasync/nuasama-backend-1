@@ -3,7 +3,7 @@ import { MenuListQuery } from '../menu';
 
 export class MenuService {
   async getAll(query: MenuListQuery) {
-    const { category, search, page, limit } = query;
+    const { category, search, product_type, page, limit } = query;
     const offset = (page - 1) * limit;
 
     const whereClause: any = {
@@ -17,6 +17,10 @@ export class MenuService {
       } else {
         whereClause.category = lowerCat;
       }
+    }
+
+    if (product_type) {
+      whereClause.product_type = product_type;
     }
 
     if (search) {
@@ -50,6 +54,7 @@ export class MenuService {
       price: Number(item.price),
       photoUrl: item.photo_url,
       category: item.category,
+      productType: item.product_type || 'fnb',
       stockStatus: item.stock_status,
       useStock: item.use_stock,
       stockQuantity: item.stock_quantity,
