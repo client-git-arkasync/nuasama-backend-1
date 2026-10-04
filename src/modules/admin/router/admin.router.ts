@@ -39,3 +39,15 @@ adminRouter.post('/menu/:id/photo', ...guard, upload.single('photo'), adminContr
 adminRouter.get('/settings', ...guard, adminController.getSettings.bind(adminController));
 adminRouter.post('/settings', ...guard, adminController.updateSettings.bind(adminController));
 
+// Aksesori Tipe
+adminRouter.get('/aksesoris/tipe', ...guard, adminController.getAksesoriTipe.bind(adminController));
+adminRouter.post('/aksesoris/tipe', ...guard, adminController.createAksesoriTipe.bind(adminController));
+adminRouter.patch('/aksesoris/tipe/:id', ...guard, adminController.updateAksesoriTipe.bind(adminController));
+adminRouter.delete('/aksesoris/tipe/:id', ...guard, adminController.deleteAksesoriTipe.bind(adminController));
+
+// Vouchers
+adminRouter.get('/vouchers', ...guard, adminController.getVouchers.bind(adminController));
+adminRouter.post('/vouchers', ...guard, adminController.createVoucher.bind(adminController));
+adminRouter.patch('/vouchers/:id', ...guard, adminController.updateVoucher.bind(adminController));
+adminRouter.patch('/vouchers/:id/toggle-status', ...guard, adminController.toggleVoucherStatus.bind(adminController));
+adminRouter.delete('/vouchers/:id', ...guard, adminController.deleteVoucher.bind(adminController));

@@ -51,6 +51,15 @@ export const updateSettingsSchema = z.object({
   use_ppn: z.boolean(),
 });
 
+export const voucherSchema = z.object({
+  code: z.string().min(1).max(50),
+  discount_amount: z.number().positive(),
+  applicable_product: z.enum(['fnb', 'aksesori', 'all']),
+  applicable_order_type: z.enum(['dine_in', 'takeaway', 'all']),
+  min_purchase: z.number().min(0),
+  point_cost: z.number().min(0),
+});
+
 export class AdminService {
   // ---- Orders ----
   async getOrders(statusFilter: string, page: number, limit: number) {
@@ -83,6 +92,7 @@ export class AdminService {
     const isRejected = params.action === 'ditolak' || params.action === 'reject';
     const newStatus = isRejected ? 'ditolak' : 'diproses';
     const verificationStatus = isRejected ? 'ditolak' : 'disetujui';
+    const points = isRejected ? 0 : Math.floor(Number(order.total_price) / 10000);
 
     await prisma.$transaction(async (tx) => {
       await tx.orders.update({ where: { id: orderId }, data: { status: newStatus } });
@@ -94,6 +104,13 @@ export class AdminService {
           rejection_reason: params.rejection_reason || null,
         },
       });
+
+      if (!isRejected && points > 0) {
+        await tx.users.update({
+          where: { id: order.user_id },
+          data: { nuasama_point: { increment: points } },
+        });
+      }
     });
   }
 
@@ -381,6 +398,131 @@ export class AdminService {
       dapur_name: item.dapur?.name || '',
       dapur_logo_url: item.dapur?.logo_url || '',
     };
+  }
+
+  // ---- Aksesori Tipe (stored as JSON in app_settings) ----
+
+  private readonly TIPE_KEY = 'aksesori_tipe_list';
+
+  private async getTipeList(): Promise<{ id: string; name: string }[]> {
+    const row = await prisma.app_settings.findUnique({ where: { key: this.TIPE_KEY } });
+    if (!row) return [];
+    try { return JSON.parse(row.value); } catch { return []; }
+  }
+
+  private async saveTipeList(list: { id: string; name: string }[]) {
+    await prisma.app_settings.upsert({
+      where: { key: this.TIPE_KEY },
+      update: { value: JSON.stringify(list) },
+      create: { key: this.TIPE_KEY, value: JSON.stringify(list) },
+    });
+  }
+
+  async getAksesoriTipe() {
+    const tipes = await this.getTipeList();
+    // Enrich with item count from menu_items
+    const counts = await prisma.menuItem.groupBy({
+      by: ['category'],
+      where: { product_type: 'aksesori' },
+      _count: { id: true },
+    });
+    const countMap: Record<string, number> = {};
+    counts.forEach((c: any) => { countMap[c.category.toLowerCase()] = c._count.id; });
+    return tipes.map(t => ({ ...t, itemCount: countMap[t.name.toLowerCase()] || 0 }));
+  }
+
+  async createAksesoriTipe(name: string) {
+    const list = await this.getTipeList();
+    if (list.find(t => t.name.toLowerCase() === name.toLowerCase())) {
+      throw new AppError('Tipe dengan nama tersebut sudah ada', 400);
+    }
+    const newTipe = { id: `tipe_${Date.now()}`, name };
+    list.push(newTipe);
+    await this.saveTipeList(list);
+    return newTipe;
+  }
+
+  async updateAksesoriTipe(id: string, name: string) {
+    const list = await this.getTipeList();
+    const idx = list.findIndex(t => t.id === id);
+    if (idx === -1) throw new AppError('Tipe tidak ditemukan', 404);
+    list[idx].name = name;
+    await this.saveTipeList(list);
+    return list[idx];
+  }
+
+  async deleteAksesoriTipe(id: string) {
+    const list = await this.getTipeList();
+    const filtered = list.filter(t => t.id !== id);
+    if (filtered.length === list.length) throw new AppError('Tipe tidak ditemukan', 404);
+    await this.saveTipeList(filtered);
+  }
+
+  // ---- Vouchers ----
+  async getVouchers() {
+    const vouchers = await prisma.vouchers.findMany({ orderBy: { created_at: 'desc' } });
+    return vouchers.map(v => ({
+      ...v,
+      discount_amount: Number(v.discount_amount),
+      min_purchase: Number(v.min_purchase),
+    }));
+  }
+
+  async createVoucher(params: z.infer<typeof voucherSchema>) {
+    const existing = await prisma.vouchers.findUnique({ where: { code: params.code.toUpperCase() } });
+    if (existing) throw new AppError('Kode voucher sudah digunakan', 400);
+
+    const voucher = await prisma.vouchers.create({
+      data: {
+        code: params.code.toUpperCase(),
+        discount_amount: params.discount_amount,
+        applicable_product: params.applicable_product,
+        applicable_order_type: params.applicable_order_type,
+        min_purchase: params.min_purchase,
+        point_cost: params.point_cost,
+      },
+    });
+    return { ...voucher, discount_amount: Number(voucher.discount_amount), min_purchase: Number(voucher.min_purchase) };
+  }
+
+  async updateVoucher(id: string, params: z.infer<typeof voucherSchema>) {
+    const existing = await prisma.vouchers.findUnique({ where: { id } });
+    if (!existing) throw new AppError('Voucher tidak ditemukan', 404);
+
+    if (existing.code !== params.code.toUpperCase()) {
+      const codeTaken = await prisma.vouchers.findUnique({ where: { code: params.code.toUpperCase() } });
+      if (codeTaken) throw new AppError('Kode voucher sudah digunakan', 400);
+    }
+
+    const voucher = await prisma.vouchers.update({
+      where: { id },
+      data: {
+        code: params.code.toUpperCase(),
+        discount_amount: params.discount_amount,
+        applicable_product: params.applicable_product,
+        applicable_order_type: params.applicable_order_type,
+        min_purchase: params.min_purchase,
+        point_cost: params.point_cost,
+      },
+    });
+    return { ...voucher, discount_amount: Number(voucher.discount_amount), min_purchase: Number(voucher.min_purchase) };
+  }
+
+  async toggleVoucherStatus(id: string) {
+    const existing = await prisma.vouchers.findUnique({ where: { id } });
+    if (!existing) throw new AppError('Voucher tidak ditemukan', 404);
+
+    const voucher = await prisma.vouchers.update({
+      where: { id },
+      data: { is_active: !existing.is_active },
+    });
+    return { ...voucher, discount_amount: Number(voucher.discount_amount), min_purchase: Number(voucher.min_purchase) };
+  }
+
+  async deleteVoucher(id: string) {
+    const existing = await prisma.vouchers.findUnique({ where: { id } });
+    if (!existing) throw new AppError('Voucher tidak ditemukan', 404);
+    await prisma.vouchers.delete({ where: { id } });
   }
 }
 

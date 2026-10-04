@@ -11,6 +11,7 @@ import { dapurRouter } from './modules/dapur/router/dapur.router';
 import { menuRouter } from './modules/menu/router/menu.router';
 import { orderRouter } from './modules/order/router/order.router';
 import { webhookRouter } from './modules/webhook/router/webhook.router';
+import { voucherRouter } from './modules/voucher/router/voucher.router';
 
 const app: Application = express();
 
@@ -45,6 +46,7 @@ app.use('/api/dapur', dapurRouter);
 app.use('/api/menu', menuRouter);
 app.use('/api/orders', orderRouter);
 app.use('/api/webhooks', webhookRouter);
+app.use('/api/vouchers', voucherRouter);
 
 app.get('/api/settings', async (req: Request, res: Response, next: import('express').NextFunction) => {
   try {

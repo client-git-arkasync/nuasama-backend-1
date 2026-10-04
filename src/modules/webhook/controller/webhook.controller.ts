@@ -63,11 +63,20 @@ export class WebhookController {
         || req.body.event === 'payment.expired' || req.body.event === 'payment.cancel';
 
       if (isSuccess) {
-        await prisma.orders.update({
-          where: { id: order.id },
-          data: { status: 'diproses' },
+        const points = Math.floor(Number(order.total_price) / 10000);
+        await prisma.$transaction(async (tx) => {
+          await tx.orders.update({
+            where: { id: order.id },
+            data: { status: 'diproses' },
+          });
+          if (points > 0) {
+            await tx.users.update({
+              where: { id: order.user_id },
+              data: { nuasama_point: { increment: points } },
+            });
+          }
         });
-        console.log(`[Webhook] ✅ Order ${order.id} marked as diproses (payment success)`);
+        console.log(`[Webhook] ✅ Order ${order.id} marked as diproses (payment success). Awarded ${points} points.`);
       } else if (isFailed) {
         await prisma.orders.update({
           where: { id: order.id },

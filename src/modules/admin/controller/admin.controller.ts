@@ -7,6 +7,7 @@ import {
   updateMenuItemSchema,
   historyQuerySchema,
   updateSettingsSchema,
+  voucherSchema,
 } from '../service/admin.service';
 import { AppError } from '../../../utils/AppError';
 import { z } from 'zod';
@@ -170,6 +171,81 @@ export class AdminController {
       if (!result.success) throw new AppError('Data tidak valid: ' + result.error.errors[0].message, 400);
       const data = await adminService.updateSettings(result.data.ppn, result.data.use_ppn);
       res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  // ---- Aksesori Tipe ----
+
+  async getAksesoriTipe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await adminService.getAksesoriTipe();
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async createAksesoriTipe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) throw new AppError('Nama tipe wajib diisi', 400);
+      const data = await adminService.createAksesoriTipe(name.trim());
+      res.status(201).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async updateAksesoriTipe(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) throw new AppError('Nama tipe wajib diisi', 400);
+      const data = await adminService.updateAksesoriTipe(req.params.id, name.trim());
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async deleteAksesoriTipe(req: Request, res: Response, next: NextFunction) {
+    try {
+      await adminService.deleteAksesoriTipe(req.params.id);
+      res.status(200).json({ status: 'success', message: 'Tipe berhasil dihapus' });
+    } catch (err) { next(err); }
+  }
+
+  // ---- Vouchers ----
+
+  async getVouchers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await adminService.getVouchers();
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async createVoucher(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = voucherSchema.safeParse(req.body);
+      if (!result.success) throw new AppError('Data voucher tidak valid: ' + result.error.errors[0].message, 400);
+      const data = await adminService.createVoucher(result.data);
+      res.status(201).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async updateVoucher(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = voucherSchema.safeParse(req.body);
+      if (!result.success) throw new AppError('Data voucher tidak valid: ' + result.error.errors[0].message, 400);
+      const data = await adminService.updateVoucher(req.params.id, result.data);
+      res.status(200).json({ status: 'success', data });
+    } catch (err) { next(err); }
+  }
+
+  async toggleVoucherStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await adminService.toggleVoucherStatus(req.params.id);
+      res.status(200).json({ status: 'success', message: 'Status voucher berhasil diubah', data });
+    } catch (err) { next(err); }
+  }
+
+  async deleteVoucher(req: Request, res: Response, next: NextFunction) {
+    try {
+      await adminService.deleteVoucher(req.params.id);
+      res.status(200).json({ status: 'success', message: 'Voucher berhasil dihapus' });
     } catch (err) { next(err); }
   }
 }
