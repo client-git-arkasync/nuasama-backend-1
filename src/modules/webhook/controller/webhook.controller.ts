@@ -63,7 +63,7 @@ export class WebhookController {
         || req.body.event === 'payment.expired' || req.body.event === 'payment.cancel';
 
       if (isSuccess) {
-        const points = Math.floor(Number(order.total_price) / 10000);
+        const points = Math.floor(Number(order.total_price) / 1000);
         await prisma.$transaction(async (tx) => {
           await tx.orders.update({
             where: { id: order.id },

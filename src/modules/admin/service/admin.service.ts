@@ -92,7 +92,7 @@ export class AdminService {
     const isRejected = params.action === 'ditolak' || params.action === 'reject';
     const newStatus = isRejected ? 'ditolak' : 'diproses';
     const verificationStatus = isRejected ? 'ditolak' : 'disetujui';
-    const points = isRejected ? 0 : Math.floor(Number(order.total_price) / 10000);
+    const points = isRejected ? 0 : Math.floor(Number(order.total_price) / 1000);
 
     await prisma.$transaction(async (tx) => {
       await tx.orders.update({ where: { id: orderId }, data: { status: newStatus } });
@@ -156,9 +156,22 @@ export class AdminService {
       throw new AppError(`Pesanan sudah ${order.status}`, 400);
     }
 
-    await prisma.orders.update({
-      where: { id: order.id },
-      data: { status: 'selesai', updated_at: new Date() },
+    // Award points if the order was not yet processed/paid
+    const needsPoints = ['menunggu_verifikasi', 'menunggu_pembayaran'].includes(order.status);
+    const points = needsPoints ? Math.floor(Number(order.total_price) / 1000) : 0;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.orders.update({
+        where: { id: order.id },
+        data: { status: 'selesai', updated_at: new Date() },
+      });
+
+      if (needsPoints && points > 0) {
+        await tx.users.update({
+          where: { id: order.user_id },
+          data: { nuasama_point: { increment: points } },
+        });
+      }
     });
 
     return this.buildAdminOrderResponse(order.id);
@@ -349,7 +362,7 @@ export class AdminService {
       include: {
         users: { select: { name: true, email: true, phone_number: true } },
         order_items: {
-          include: { menu_items: { select: { name: true, photo_url: true } } },
+          include: { menu_items: { select: { name: true, photo_url: true, product_type: true } } },
         },
       },
     });
@@ -373,6 +386,7 @@ export class AdminService {
       items: order.order_items.map(oi => ({
         menu_item_id: oi.menu_item_id,
         menu_name: oi.menu_items.name,
+        product_type: (oi.menu_items as any).product_type || 'fnb',
         photo_url: oi.menu_items.photo_url || '',
         qty: oi.qty,
         price_at_order: Number(oi.price_at_order),

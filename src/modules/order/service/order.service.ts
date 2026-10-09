@@ -7,6 +7,7 @@ export const createOrderSchema = z.object({
   order_type: z.enum(['dine_in', 'take_away']),
   dine_in_date: z.string().optional(),
   dine_in_time: z.string().optional(),
+  user_voucher_id: z.string().uuid().optional(),
   items: z.array(z.object({
     menu_item_id: z.string().uuid(),
     qty: z.number().int().min(1),
@@ -117,7 +118,26 @@ export class OrderService {
     const usePpn = usePpnSetting?.value === 'true';
     const ppnRate = usePpn && ppnSetting ? Number(ppnSetting.value) / 100 : 0;
     const tax = Math.round(subtotal * ppnRate);
-    const total = subtotal + tax;
+
+    // Voucher validation
+    let discountAmount = 0;
+    let appliedUserVoucherId: string | null = null;
+    if (params.user_voucher_id) {
+      const uv = await prisma.user_vouchers.findFirst({
+        where: { id: params.user_voucher_id, user_id: userId, is_used: false },
+        include: { vouchers: true },
+      });
+      if (!uv) throw new AppError('Voucher tidak valid atau sudah digunakan', 400);
+      const v = uv.vouchers;
+      if (!v.is_active) throw new AppError('Voucher sudah tidak aktif', 400);
+      if (subtotal < Number(v.min_purchase)) {
+        throw new AppError(`Minimum pembelian untuk voucher ini adalah ${Number(v.min_purchase).toLocaleString('id-ID')}`, 400);
+      }
+      discountAmount = Math.min(Number(v.discount_amount), subtotal);
+      appliedUserVoucherId = uv.id;
+    }
+
+    const total = subtotal + tax - discountAmount;
 
     // Transaction: create order + order_items + clear cart
     const displayId = await generateDisplayId(userId);
@@ -154,6 +174,14 @@ export class OrderService {
             data: { stock_quantity: { decrement: ci.qty } }
           });
         }
+      }
+
+      // Mark voucher as used
+      if (appliedUserVoucherId) {
+        await tx.user_vouchers.update({
+          where: { id: appliedUserVoucherId },
+          data: { is_used: true, used_at: new Date() },
+        });
       }
 
       return newOrder;
@@ -232,9 +260,19 @@ export class OrderService {
       try {
         const statusData = await RavaPayClient.getTransactionStatus(order.ravapay_transaction_id);
         if (statusData.status === 'success') {
-          order = await prisma.orders.update({
-            where: { id: order.id },
-            data: { status: 'diproses' },
+          const points = Math.floor(Number(order.total_price) / 1000);
+          order = await prisma.$transaction(async (tx) => {
+            const updatedOrder = await tx.orders.update({
+              where: { id: order!.id },
+              data: { status: 'diproses' },
+            });
+            if (points > 0) {
+              await tx.users.update({
+                where: { id: order!.user_id },
+                data: { nuasama_point: { increment: points } },
+              });
+            }
+            return updatedOrder;
           });
         } else if (statusData.status === 'expired' || statusData.status === 'cancel') {
           order = await prisma.orders.update({
@@ -280,7 +318,7 @@ export class OrderService {
       where: { id: orderId },
       include: {
         order_items: {
-          include: { menu_items: { select: { name: true, photo_url: true } } },
+          include: { menu_items: { select: { name: true, photo_url: true, product_type: true } } },
         },
       },
     });
@@ -299,6 +337,7 @@ export class OrderService {
       items: order.order_items.map(oi => ({
         menu_item_id: oi.menu_item_id,
         menu_name: oi.menu_items.name,
+        product_type: (oi.menu_items as any).product_type || 'fnb',
         qty: oi.qty,
         price_at_order: Number(oi.price_at_order),
         subtotal: Number(oi.price_at_order) * oi.qty,
