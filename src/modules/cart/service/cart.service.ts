@@ -56,18 +56,6 @@ export class CartService {
       include: { menu_items: true }
     });
 
-    if (cartItems.length > 0) {
-      const firstItemType = cartItems[0].menu_items.product_type;
-      const isFirstAksesori = firstItemType === 'aksesori' || firstItemType === 'aksesoris';
-      const isNewAksesori = menuItem.product_type === 'aksesori' || menuItem.product_type === 'aksesoris';
-      
-      if (isFirstAksesori !== isNewAksesori) {
-        const type1 = isFirstAksesori ? 'Aksesoris' : 'F&B';
-        const type2 = isNewAksesori ? 'Aksesoris' : 'F&B';
-        throw new AppError(`Tidak bisa mencampur ${type1} dan ${type2} dalam satu pesanan. Selesaikan satu jenis pesanan terlebih dahulu.`, 400);
-      }
-    }
-
     const existing = cartItems.find(item => item.menu_item_id === params.menu_item_id);
 
     if (existing) {
