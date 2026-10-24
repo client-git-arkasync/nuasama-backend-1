@@ -92,7 +92,7 @@ export class AdminService {
     const isRejected = params.action === 'ditolak' || params.action === 'reject';
     const newStatus = isRejected ? 'ditolak' : 'diproses';
     const verificationStatus = isRejected ? 'ditolak' : 'disetujui';
-    const points = isRejected ? 0 : Math.floor(Number(order.total_price) / 1000);
+    const points = isRejected ? 0 : Math.floor(Number(order.total_price) / 10000);
 
     await prisma.$transaction(async (tx) => {
       await tx.orders.update({ where: { id: orderId }, data: { status: newStatus } });
@@ -158,7 +158,7 @@ export class AdminService {
 
     // Award points if the order was not yet processed/paid
     const needsPoints = ['menunggu_verifikasi', 'menunggu_pembayaran'].includes(order.status);
-    const points = needsPoints ? Math.floor(Number(order.total_price) / 1000) : 0;
+    const points = needsPoints ? Math.floor(Number(order.total_price) / 10000) : 0;
 
     await prisma.$transaction(async (tx) => {
       await tx.orders.update({

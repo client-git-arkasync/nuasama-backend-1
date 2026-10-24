@@ -260,7 +260,7 @@ export class OrderService {
       try {
         const statusData = await RavaPayClient.getTransactionStatus(order.ravapay_transaction_id);
         if (statusData.status === 'success') {
-          const points = Math.floor(Number(order.total_price) / 1000);
+          const points = Math.floor(Number(order.total_price) / 10000);
           order = await prisma.$transaction(async (tx) => {
             const updatedOrder = await tx.orders.update({
               where: { id: order!.id },
