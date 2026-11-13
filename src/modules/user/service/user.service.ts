@@ -11,6 +11,10 @@ export class UserService {
       email: user.email,
       role: user.role,
       phone_number: user.phone_number || '',
+      phoneNumber: user.phone_number || '',
+      createdAt: user.created_at,
+      nuasamaPoint: user.nuasama_point,
+      nuasama_point: user.nuasama_point,
     };
   }
 
@@ -34,6 +38,10 @@ export class UserService {
       email: user.email,
       role: user.role,
       phone_number: user.phone_number || '',
+      phoneNumber: user.phone_number || '',
+      createdAt: user.created_at,
+      nuasamaPoint: user.nuasama_point,
+      nuasama_point: user.nuasama_point,
     };
   }
 }

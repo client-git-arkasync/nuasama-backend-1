@@ -51,16 +51,18 @@ export class AdminController {
       const result = verifyPaymentSchema.safeParse(req.body);
       if (!result.success) throw new AppError('Action wajib diisi: disetujui atau ditolak', 400);
 
-      // Validasi alasan penolakan wajib jika ditolak
       const isRejected = result.data.action === 'ditolak' || result.data.action === 'reject';
-      if (isRejected && !result.data.rejection_reason) {
-        throw new AppError('Alasan penolakan wajib diisi jika bukti pembayaran ditolak', 400);
-      }
+      const rejectionReason = isRejected 
+        ? (result.data.rejection_reason?.trim() || 'Dibatalkan oleh admin')
+        : '';
 
-      await adminService.verifyPayment(req.user.userId, req.params.id, result.data);
+      await adminService.verifyPayment(req.user.userId, req.params.id, {
+        ...result.data,
+        rejection_reason: rejectionReason,
+      });
 
       const msg = isRejected
-        ? 'Bukti pembayaran ditolak, notifikasi telah dikirim ke pelanggan'
+        ? 'Bukti pembayaran ditolak, pesanan dibatalkan'
         : 'Bukti pembayaran berhasil disetujui, pesanan sedang diproses';
       res.status(200).json({ status: 'success', message: msg });
     } catch (err) { next(err); }

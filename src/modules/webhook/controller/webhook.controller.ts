@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../../../lib/prisma';
 import crypto from 'crypto';
+import { rollbackOrderItemsAndVoucher } from '../../order/utils/orderRollback';
 
 export class WebhookController {
   async handleRavaPay(req: Request, res: Response, next: NextFunction) {
@@ -78,11 +79,14 @@ export class WebhookController {
         });
         console.log(`[Webhook] ✅ Order ${order.id} marked as diproses (payment success). Awarded ${points} points.`);
       } else if (isFailed) {
-        await prisma.orders.update({
-          where: { id: order.id },
-          data: { status: 'ditolak' },
+        await prisma.$transaction(async (tx) => {
+          await tx.orders.update({
+            where: { id: order.id },
+            data: { status: 'ditolak' },
+          });
+          await rollbackOrderItemsAndVoucher(tx, order.id);
         });
-        console.log(`[Webhook] ❌ Order ${order.id} marked as ditolak (${eventStatus})`);
+        console.log(`[Webhook] ❌ Order ${order.id} marked as ditolak (${eventStatus}) and stock/voucher restored.`);
       } else {
         console.log(`[Webhook] ℹ️ Unhandled event/status: ${req.body.event} / ${eventStatus}`);
       }

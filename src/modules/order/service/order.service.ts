@@ -2,6 +2,7 @@ import prisma from '../../../lib/prisma';
 import { AppError } from '../../../utils/AppError';
 import { z } from 'zod';
 import { RavaPayClient } from '../../../lib/ravapay';
+import { rollbackOrderItemsAndVoucher } from '../utils/orderRollback';
 
 export const createOrderSchema = z.object({
   order_type: z.enum(['dine_in', 'take_away']),
@@ -151,6 +152,7 @@ export class OrderService {
           dine_in_time: params.dine_in_time || null,
           total_price: total,
           status: 'menunggu_pembayaran',
+          user_voucher_id: appliedUserVoucherId,
         },
       });
 
@@ -275,9 +277,13 @@ export class OrderService {
             return updatedOrder;
           });
         } else if (statusData.status === 'expired' || statusData.status === 'cancel') {
-          order = await prisma.orders.update({
-            where: { id: order.id },
-            data: { status: 'ditolak' },
+          order = await prisma.$transaction(async (tx) => {
+            const updated = await tx.orders.update({
+              where: { id: order!.id },
+              data: { status: 'ditolak' },
+            });
+            await rollbackOrderItemsAndVoucher(tx, order!.id);
+            return updated;
           });
         }
       } catch (err: any) {

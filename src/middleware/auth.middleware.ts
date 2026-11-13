@@ -30,6 +30,24 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
+export const optionalAuthenticate = (req: Request, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  const queryToken = req.query.token as string | undefined;
+  const raw = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : queryToken;
+
+  if (!raw) {
+    return next();
+  }
+
+  try {
+    const payload = verifyToken(raw);
+    req.user = payload;
+  } catch {
+    // Abaikan jika token tidak valid atau expired untuk request publik opsional
+  }
+  next();
+};
+
 export const authorizeAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user || req.user.role !== 'admin') {
     return next(new AppError('Akses ditolak, hanya admin yang diizinkan', 403));

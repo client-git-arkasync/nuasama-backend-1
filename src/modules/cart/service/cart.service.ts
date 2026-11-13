@@ -27,16 +27,21 @@ export class CartService {
     const formatted = items
       .filter(ci => ci.menu_items.stock_status === 'aktif')
       .map(ci => {
-        const price = Number(ci.menu_items.price);
-        const subtotal = price * ci.qty;
+        const effectivePrice = ci.menu_items.discount_price 
+          ? Number(ci.menu_items.discount_price) 
+          : Number(ci.menu_items.price);
+        const subtotal = effectivePrice * ci.qty;
         totalPrice += subtotal;
         return {
           id: ci.id,
           menu_item_id: ci.menu_item_id,
           menu_name: ci.menu_items.name,
-          menu_price: price,
+          menu_price: effectivePrice,
+          original_price: Number(ci.menu_items.price),
+          discount_price: ci.menu_items.discount_price ? Number(ci.menu_items.discount_price) : null,
           photo_url: ci.menu_items.photo_url || '',
           outlet_name: ci.menu_items.dapur?.name || '',
+          product_type: (ci.menu_items as any).product_type || 'fnb',
           qty: ci.qty,
           subtotal,
         };

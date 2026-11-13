@@ -98,6 +98,7 @@ export class MenuService {
         price: Number(item.price),
         photoUrl: item.photo_url,
         category: item.category,
+        productType: item.product_type || 'fnb',
         stockStatus: item.stock_status,
         useStock: item.use_stock,
         stockQuantity: item.stock_quantity,

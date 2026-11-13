@@ -14,6 +14,8 @@ async function resetDb() {
     'order_items',
     'orders',
     'cart_items',
+    'user_vouchers',
+    'vouchers',
     'menu_items',
     'dapurs',
     'users',

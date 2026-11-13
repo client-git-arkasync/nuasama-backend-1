@@ -1,6 +1,7 @@
 import prisma from '../../../lib/prisma';
 import { AppError } from '../../../utils/AppError';
 import { z } from 'zod';
+import { rollbackOrderItemsAndVoucher } from '../../order/utils/orderRollback';
 
 export const createMenuItemSchema = z.object({
   name: z.string().min(1),
@@ -8,7 +9,7 @@ export const createMenuItemSchema = z.object({
   price: z.number().positive(),
   category: z.string().min(1),
   product_type: z.enum(['fnb', 'aksesori']).default('fnb'),
-  dapur_id: z.string().uuid(),
+  dapur_id: z.string().uuid().optional(),
   photo_url: z.string().url().optional(),
   use_stock: z.boolean().optional().default(false),
   stock_quantity: z.number().optional().default(0),
@@ -55,7 +56,7 @@ export const voucherSchema = z.object({
   code: z.string().min(1).max(50),
   discount_amount: z.number().positive(),
   applicable_product: z.enum(['fnb', 'aksesori', 'all']),
-  applicable_order_type: z.enum(['dine_in', 'takeaway', 'all']),
+  applicable_order_type: z.enum(['dine_in', 'take_away', 'takeaway', 'all']).transform(val => val === 'takeaway' ? 'take_away' : val),
   min_purchase: z.number().min(0),
   point_cost: z.number().min(0),
 });
@@ -111,6 +112,11 @@ export class AdminService {
           data: { nuasama_point: { increment: points } },
         });
       }
+
+      // Rollback stok & voucher jika pesanan ditolak
+      if (isRejected) {
+        await rollbackOrderItemsAndVoucher(tx, orderId);
+      }
     });
   }
 
@@ -146,6 +152,7 @@ export class AdminService {
         OR: [
           { display_id: cleanId },
           { display_id: cleanId.toUpperCase() },
+          { id: cleanId },
         ]
       },
     });
@@ -220,6 +227,19 @@ export class AdminService {
   }
 
   async createMenuItem(params: z.infer<typeof createMenuItemSchema>) {
+    let targetDapurId = params.dapur_id;
+    if (!targetDapurId) {
+      const firstDapur = await prisma.dapur.findFirst();
+      if (firstDapur) {
+        targetDapurId = firstDapur.id;
+      } else {
+        const defaultDapur = await prisma.dapur.create({
+          data: { name: 'Outlet Utama' },
+        });
+        targetDapurId = defaultDapur.id;
+      }
+    }
+
     const item = await prisma.menuItem.create({
       data: {
         name: params.name,
@@ -227,7 +247,7 @@ export class AdminService {
         price: params.price,
         category: params.category,
         product_type: params.product_type || 'fnb',
-        dapur_id: params.dapur_id,
+        dapur_id: targetDapurId,
         photo_url: params.photo_url || null,
         stock_status: 'aktif',
         use_stock: params.use_stock,
